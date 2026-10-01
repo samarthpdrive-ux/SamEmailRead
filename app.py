@@ -198,6 +198,21 @@ def valid_email(value: Any) -> bool:
     return isinstance(value, str) and len(value.strip()) <= 320 and bool(EMAIL_RE.fullmatch(value.strip()))
 
 
+def parse_account_line(value: str) -> tuple[str, str, str]:
+    """Parse email----password----client_id----refresh_token.
+
+    The password is deliberately discarded. The mail API only needs the
+    Microsoft application client ID and Graph refresh token.
+    """
+    raw = (value or "").strip()
+    for delimiter in ("----", "|"):
+        parts = raw.split(delimiter, 3)
+        if len(parts) == 4:
+            email, _password, client_id, refresh_token = (part.strip() for part in parts)
+            return email.lower(), client_id, refresh_token
+    raise ValueError("Use email----password----client_id----refresh_token")
+
+
 def account_public(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "email": row["email"],
@@ -460,9 +475,16 @@ def root():
 @require_admin
 def register_account():
     data = request.get_json(silent=True) or request.form.to_dict()
-    email = str(data.get("email", "")).strip().lower()
-    client_id = str(data.get("client_id", "")).strip()
-    refresh_token = str(data.get("refresh_token", data.get("token", ""))).strip()
+    account_line = str(data.get("account_line", "")).strip()
+    if account_line:
+        try:
+            email, client_id, refresh_token = parse_account_line(account_line)
+        except ValueError as exc:
+            return json_error(str(exc))
+    else:
+        email = str(data.get("email", "")).strip().lower()
+        client_id = str(data.get("client_id", "")).strip()
+        refresh_token = str(data.get("refresh_token", data.get("token", ""))).strip()
     label = str(data.get("label", "")).strip()
     if not valid_email(email):
         return json_error("A valid email is required")
@@ -600,13 +622,15 @@ def manager():
 <html><head><meta charset='utf-8'><title>Outlook API manager</title>
 <style>body{font:16px system-ui;max-width:760px;margin:40px auto;padding:0 16px}input,button{font:inherit;padding:9px;margin:5px 0;width:100%;box-sizing:border-box}button{cursor:pointer}pre{background:#f4f4f4;padding:12px;white-space:pre-wrap}</style></head>
 <body><h1>Outlook API manager</h1>
-<p>Register a mailbox. The refresh token is encrypted before it is stored. The returned account API key is displayed once.</p>
+<p>Register a mailbox. The refresh token is encrypted before it is stored. The password field in an account line is ignored and never stored. The returned account API key is displayed once.</p>
 <form id='form'><input id='admin' type='password' placeholder='ADMIN_API_KEY' required>
-<input id='email' type='email' placeholder='email@example.com' required>
-<input id='client_id' placeholder='Microsoft application client_id' required>
-<input id='refresh_token' placeholder='Microsoft Graph refresh_token' required>
+<textarea id='account_line' rows='5' placeholder='email----password----client_id----refresh_token'></textarea>
+<p>Or enter the fields separately:</p>
+<input id='email' type='email' placeholder='email@example.com'>
+<input id='client_id' placeholder='Microsoft application client_id'>
+<input id='refresh_token' placeholder='Microsoft Graph refresh_token'>
 <input id='label' placeholder='Optional label'><button>Add or update mailbox</button></form><pre id='out'></pre>
-<script>const byId=id=>document.getElementById(id);byId('form').onsubmit=async e=>{e.preventDefault();const body={email:byId('email').value,client_id:byId('client_id').value,refresh_token:byId('refresh_token').value,label:byId('label').value};const r=await fetch('/v1/accounts',{method:'POST',headers:{'Content-Type':'application/json','X-API-Key':byId('admin').value},body:JSON.stringify(body)});byId('out').textContent=JSON.stringify(await r.json(),null,2)}</script></body></html>"""
+<script>const byId=id=>document.getElementById(id);byId('form').onsubmit=async e=>{e.preventDefault();const line=byId('account_line').value.trim();const body=line?{account_line:line,label:byId('label').value}:{email:byId('email').value,client_id:byId('client_id').value,refresh_token:byId('refresh_token').value,label:byId('label').value};const r=await fetch('/v1/accounts',{method:'POST',headers:{'Content-Type':'application/json','X-API-Key':byId('admin').value},body:JSON.stringify(body)});byId('out').textContent=JSON.stringify(await r.json(),null,2)}</script></body></html>"""
 
 
 @app.errorhandler(404)
