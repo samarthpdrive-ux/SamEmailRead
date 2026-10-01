@@ -40,8 +40,23 @@ MAX_LIMIT = 50
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 BASE_DIR = Path(__file__).resolve().parent
-DATABASE_PATH = Path(os.getenv("DATABASE_PATH", str(BASE_DIR / "data" / "outlook_api.db")))
-DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+
+def resolve_database_path() -> Path:
+    configured = Path(os.getenv("DATABASE_PATH", str(BASE_DIR / "data" / "outlook_api.db")))
+    try:
+        configured.parent.mkdir(parents=True, exist_ok=True)
+        return configured
+    except (PermissionError, OSError):
+        # Render free services have no persistent disk. Fall back to the app's
+        # writable ephemeral filesystem instead of failing during boot.
+        fallback = BASE_DIR / "data" / "outlook_api.db"
+        fallback.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Warning: cannot write {configured}; using temporary {fallback}")
+        return fallback
+
+
+DATABASE_PATH = resolve_database_path()
 
 app = Flask(__name__)
 
