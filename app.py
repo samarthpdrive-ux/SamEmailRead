@@ -231,7 +231,7 @@ def make_api_key() -> str:
 def create_account_key(conn: sqlite3.Connection, account_id: int, label: str = "") -> str:
     raw = make_api_key()
     conn.execute(
-        "INSERT INTO api_keys(account_id,key_hash,label,created_at) VALUES(?,?,?,?,?)",
+        "INSERT INTO api_keys(account_id,key_hash,label,created_at) VALUES(?,?,?,?)",
         (account_id, hash_key(raw), label[:100], utc_now()),
     )
     return raw
